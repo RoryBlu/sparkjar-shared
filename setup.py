@@ -20,8 +20,13 @@ setup(
     python_requires=">=3.12",
     install_requires=[
         "sqlalchemy>=2.0.0",
+        "asyncpg>=0.29.0",
+        "psycopg2-binary>=2.9.9",
         "pydantic>=2.0.0",
         "python-jose[cryptography]>=3.3.0",
         "passlib[bcrypt]>=1.7.4",
+        "python-dotenv>=1.0.0",
+        "httpx>=0.25.0",
+        "pgvector>=0.2.0",
     ],
 )

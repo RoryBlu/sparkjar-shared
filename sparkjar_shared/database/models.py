@@ -2,380 +2,505 @@
 Database models for SparkJAR Crew system.
 AUTO-GENERATED from database schema - DO NOT EDIT MANUALLY.
 Use UPDATE_MODELS.py script to regenerate.
+
+PROTECTED NAME MAPPINGS:
+The following database column names are mapped to Python-safe attribute names:
+- metadata -> metadata_json
+- class -> class_name
+- type -> type_name
+- schema -> schema_data
+- Any other Python/SQLAlchemy reserved words are similarly mapped
+
+To access these columns in queries, use the mapped Python attribute name.
+Example: MyModel.metadata_json (not MyModel.metadata)
+
+ACTOR TYPE SYSTEM:
+The memory system uses actor_type and actor_id to provide context for all operations.
+Valid actor_type values and their corresponding tables:
+- 'human' -> client_users table (for human users)
+- 'synth' -> synths table (for AI agents/personas)
+- 'synth_class' -> synth_classes table (for agent class definitions)
+- 'client' -> clients table (for client organizations)
+
+This allows the memory system to work across different contexts without requiring
+a direct client_id relationship on every memory entity.
 """
-from sqlalchemy import Column, String, DateTime, Text, Integer, BigInteger, Date, Boolean, Float, ARRAY
-from sqlalchemy.dialects.postgresql import UUID, JSONB, TIMESTAMP
+from sqlalchemy import Column, String, DateTime, Text, Integer, BigInteger, Date, Boolean, Index, Numeric, Float, Time, func, text
+from sqlalchemy.dialects.postgresql import UUID, JSONB, JSON, TIMESTAMP
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
-from sqlalchemy import ForeignKey, CheckConstraint, UniqueConstraint
+from sqlalchemy import ForeignKey
 from pgvector.sqlalchemy import Vector
 from datetime import datetime
 import uuid
 
 Base = declarative_base()
 
-# Note: CrewConfig is defined as CrewCfgs class below
+# Import crew configuration model
+try:
+    from services.crew_api.src.database.crew_config_model import CrewConfig
+except ImportError:
+    # Define a placeholder if not available
+    class CrewConfig:
+        pass
+
+
+class BookIngestions(Base):
+    __tablename__ = "book_ingestions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False, server_default=text('gen_random_uuid()'))
+    book_key = Column(Text, nullable=False)
+    page_number = Column(Integer, nullable=False)
+    file_name = Column(Text, nullable=False)
+    language_code = Column(Text, nullable=False)
+    version = Column(Text, nullable=False, server_default=text("'original'::text"))
+    page_text = Column(Text, nullable=False)
+    ocr_metadata = Column(JSONB)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now())
+
 
 class CallSessions(Base):
-    """
-    call_sessions table model.
-    """
     __tablename__ = "call_sessions"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False)
-    client_user_id = Column(UUID(as_uuid=True), nullable=False)
-    call_context = Column(Text, nullable=True)
-    call_metadata = Column(JSONB, nullable=False)
-    started_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
-    ended_at = Column(TIMESTAMP(timezone=True), nullable=True)
 
-    def __repr__(self):
-        return f"<CallSessions(id='{self.id}')>"
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False, server_default=text('gen_random_uuid()'))
+    client_user_id = Column(UUID(as_uuid=True), ForeignKey("client_users.id"), nullable=False)
+    call_context = Column(Text)
+    call_metadata = Column(JSONB, nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    ended_at = Column(DateTime(timezone=True))
+
 
 class CallTranscriptSegments(Base):
-    """
-    call_transcript_segments table model.
-    """
     __tablename__ = "call_transcript_segments"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False)
-    call_id = Column(UUID(as_uuid=True), nullable=False)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False, server_default=text('gen_random_uuid()'))
+    call_id = Column(UUID(as_uuid=True), ForeignKey("call_sessions.id"), nullable=False)
     speaker = Column(Text, nullable=False)
     content = Column(Text, nullable=False)
-    created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    def __repr__(self):
-        return f"<CallTranscriptSegments(id='{self.id}')>"
 
 class ChatMessages(Base):
-    """
-    chat_messages table model.
-    """
     __tablename__ = "chat_messages"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False, server_default=text('gen_random_uuid()'))
     session_id = Column(UUID(as_uuid=True), nullable=False)
     previous_message_id = Column(Text, nullable=False)
     message_role = Column(Text, nullable=False)
     message_text = Column(Text, nullable=False)
-    timestamp = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
+    timestamp = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    def __repr__(self):
-        return f"<ChatMessages(id='{self.id}')>"
 
 class ChatSessions(Base):
-    """
-    chat_sessions table model.
-    """
     __tablename__ = "chat_sessions"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False)
-    client_user_id = Column(UUID(as_uuid=True), nullable=False)
-    chat_context = Column(Text, nullable=True)
-    chat_metadata = Column(JSONB, nullable=False)
-    started_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
-    ended_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
 
-    def __repr__(self):
-        return f"<ChatSessions(id='{self.id}')>"
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False, server_default=text('gen_random_uuid()'))
+    client_user_id = Column(UUID(as_uuid=True), ForeignKey("client_users.id"), nullable=False)
+    chat_context = Column(Text)
+    chat_metadata = Column(JSONB, nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    ended_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
 
 class ClientRoles(Base):
-    """
-    client_roles table model.
-    """
     __tablename__ = "client_roles"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False)
-    client_id = Column(UUID(as_uuid=True), nullable=True)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False, server_default=text('gen_random_uuid()'))
+    client_id = Column(UUID(as_uuid=True), ForeignKey("clients.id"))
     role_code = Column(Text, nullable=False)
     role_name = Column(Text, nullable=False)
-    description = Column(Text, nullable=True)
+    description = Column(Text)
 
-    def __repr__(self):
-        return f"<ClientRoles(id='{self.id}')>"
 
 class ClientSecrets(Base):
-    """
-    client_secrets table model.
-    """
     __tablename__ = "client_secrets"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False)
-    client_id = Column(UUID(as_uuid=True), nullable=False)
-    actor_type = Column(Text, nullable=True)
-    actor_id = Column(UUID(as_uuid=True), nullable=True)
-    secret_key = Column(Text, nullable=True)
-    secret_value = Column(Text, nullable=True)
-    secrets_metadata = Column(JSONB, nullable=False)
-    created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
 
-    def __repr__(self):
-        return f"<ClientSecrets(id='{self.id}')>"
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False, server_default=text('gen_random_uuid()'))
+    client_id = Column(UUID(as_uuid=True), ForeignKey("clients.id"), nullable=False)
+    actor_type = Column(Text)
+    actor_id = Column(UUID(as_uuid=True))
+    secret_key = Column(Text)
+    secret_value = Column(Text)
+    secrets_metadata = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
 
 class ClientUserRoles(Base):
-    """
-    client_user_roles table model.
-    """
     __tablename__ = "client_user_roles"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False)
-    client_user_id = Column(UUID(as_uuid=True), nullable=True)
-    role_id = Column(UUID(as_uuid=True), nullable=True)
 
-    def __repr__(self):
-        return f"<ClientUserRoles(id='{self.id}')>"
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False, server_default=text('gen_random_uuid()'))
+    client_user_id = Column(UUID(as_uuid=True), ForeignKey("client_users.id"))
+    role_id = Column(UUID(as_uuid=True), ForeignKey("client_roles.id"))
+
 
 class ClientUsers(Base):
-    """
-    client_users table model.
-    """
     __tablename__ = "client_users"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False)
-    clients_id = Column(UUID(as_uuid=True), nullable=False)
+    # Actor type: human
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False)
+    clients_id = Column(UUID(as_uuid=True), ForeignKey("clients.id"), nullable=False)
     email = Column(Text, nullable=False)
     full_name = Column(Text, nullable=False)
-    preferred_name = Column(Text, nullable=True)
-    bio = Column(Text, nullable=True)
-    avatar_url = Column(Text, nullable=True)
-    attributes = Column(JSONB, nullable=True)
-    timezone = Column(Text, nullable=True)
-    language = Column(Text, nullable=True)
-    last_active_at = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
+    preferred_name = Column(Text)
+    bio = Column(Text)
+    avatar_url = Column(Text)
+    attributes = Column(JSONB)
+    timezone = Column(Text)
+    language = Column(Text, server_default=text("'en'::text"))
+    last_active_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    def __repr__(self):
-        return f"<ClientUsers(id='{self.id}')>"
 
 class Clients(Base):
-    """
-    clients table model.
-    """
     __tablename__ = "clients"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False)
+    # Actor type: client
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False, server_default=text('gen_random_uuid()'))
     legal_name = Column(Text, nullable=False)
-    display_name = Column(Text, nullable=True)
-    domain = Column(Text, nullable=True)
-    website_url = Column(Text, nullable=True)
-    industry = Column(Text, nullable=True)
-    naics_code = Column(Text, nullable=True)
-    tax_id = Column(Text, nullable=True)
-    number_of_employees = Column(Integer, nullable=True)
-    status = Column(Text, nullable=False)
-    created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
-    client_metadata = Column(JSONB, nullable=False)
+    display_name = Column(Text)
+    domain = Column(Text)
+    website_url = Column(Text)
+    industry = Column(Text)
+    naics_code = Column(Text)
+    tax_id = Column(Text)
+    number_of_employees = Column(Integer)
+    status = Column(Text, nullable=False, server_default=text("'active'::text"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    client_metadata = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     client_key = Column(Text, nullable=False)
 
-    def __repr__(self):
-        return f"<Clients(id='{self.id}')>"
 
 class CrewCfgs(Base):
-    """
-    crew_cfgs table model.
-    """
     __tablename__ = "crew_cfgs"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False)
     name = Column(Text, nullable=False)
     config_type = Column(Text, nullable=False)
     config_data = Column(JSONB, nullable=False)
     schema_name = Column(Text, nullable=False)
-    version = Column(Text, nullable=True)
-    description = Column(Text, nullable=True)
-    created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
+    version = Column(Text, server_default=text("'1.0'::text"))
+    description = Column(Text)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    def __repr__(self):
-        return f"<CrewCfgs(id='{self.id}')>"
 
 class CrewJobEvent(Base):
-    """
-    crew_job_event table model.
-    """
     __tablename__ = "crew_job_event"
-    
-    id = Column(BigInteger, primary_key=True, autoincrement=True, nullable=False)
-    job_id = Column(UUID(as_uuid=True), nullable=False)
-    event_type = Column(Text, nullable=False)
-    event_data = Column(JSONB, nullable=True)
-    event_time = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
 
-    def __repr__(self):
-        return f"<CrewJobEvent(id='{self.id}')>"
+    id = Column(BigInteger, primary_key=True, nullable=False)
+    job_id = Column(UUID(as_uuid=True), ForeignKey("crew_jobs.id"), nullable=False)
+    event_type = Column(Text, nullable=False)
+    event_data = Column(JSONB)
+    event_time = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
 
 class CrewJobs(Base):
-    """
-    crew_jobs table model.
-    """
     __tablename__ = "crew_jobs"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False, server_default=text('gen_random_uuid()'))
     job_key = Column(Text, nullable=False)
-    client_user_id = Column(UUID(as_uuid=True), nullable=False)
+    client_user_id = Column(UUID(as_uuid=True), ForeignKey("client_users.id"), nullable=False)
     actor_type = Column(Text, nullable=False)
     actor_id = Column(UUID(as_uuid=True), nullable=False)
-    status = Column(Text, nullable=True)
-    queued_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
-    started_at = Column(TIMESTAMP(timezone=True), nullable=True)
-    finished_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    status = Column(Text)
+    queued_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    started_at = Column(DateTime(timezone=True))
+    finished_at = Column(DateTime(timezone=True))
     attempts = Column(Integer, nullable=False)
-    last_error = Column(Text, nullable=True)
-    notes = Column(Text, nullable=True)
+    last_error = Column(Text)
+    notes = Column(Text)
     payload = Column(JSONB, nullable=False)
-    result = Column(JSONB, nullable=True)
-    created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
+    result = Column(JSONB)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    def __repr__(self):
-        return f"<CrewJobs(id='{self.id}')>"
 
 class CrewMemory(Base):
-    """
-    crew_memory table model.
-    """
     __tablename__ = "crew_memory"
-    
+
     id = Column(String, primary_key=True, nullable=False)
     crew_id = Column(String, nullable=False)
     memory_type = Column(String, nullable=False)
     content = Column(Text, nullable=False)
-    memory_metadata = Column(String, nullable=True)
+    memory_metadata = Column(JSON)
     created_at = Column(DateTime, nullable=False)
     updated_at = Column(DateTime, nullable=False)
 
-    def __repr__(self):
-        return f"<CrewMemory(id='{self.id}')>"
+
+class DocumentVectors(Base):
+    __tablename__ = "document_vectors"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False, server_default=text('gen_random_uuid()'))
+    source_table = Column(Text, nullable=False)
+    source_id = Column(Text, nullable=False)
+    source_column = Column(Text)
+    chunk_index = Column(Integer, nullable=False)
+    chunk_text = Column(Text, nullable=False)
+    embedding = Column(String)
+    metadata_json = Column('metadata', JSONB, server_default=text("'{}'::jsonb"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class DocumentVectorsOpenai(Base):
+    __tablename__ = "document_vectors_openai"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False, server_default=text('gen_random_uuid()'))
+    source_table = Column(Text, nullable=False)
+    source_id = Column(Text, nullable=False)
+    source_column = Column(Text)
+    chunk_index = Column(Integer, nullable=False)
+    chunk_text = Column(Text, nullable=False)
+    embedding = Column(String)
+    metadata_json = Column('metadata', JSONB, server_default=text("'{}'::jsonb"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now())
+
 
 class EntityResearch(Base):
-    """
-    entity_research table model.
-    """
     __tablename__ = "entity_research"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False)
-    client_id = Column(UUID(as_uuid=True), nullable=False)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False, server_default=text('gen_random_uuid()'))
+    client_id = Column(UUID(as_uuid=True), ForeignKey("clients.id"), nullable=False)
     entity_type = Column(Text, nullable=False)
     legal_name = Column(Text, nullable=False)
-    tin = Column(Text, nullable=True)
-    reg_or_birth_state = Column(Text, nullable=True)
-    reg_or_birth_country = Column(Text, nullable=True)
-    date_incorp_or_birth = Column(Date, nullable=True)
-    reg_number = Column(Text, nullable=True)
-    report_text = Column(Text, nullable=True)
-    attributes = Column(JSONB, nullable=True)
-    created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
+    tin = Column(Text)
+    reg_or_birth_state = Column(Text)
+    reg_or_birth_country = Column(Text, server_default=text("'US'::text"))
+    date_incorp_or_birth = Column(Date)
+    reg_number = Column(Text)
+    report_text = Column(Text)
+    attributes = Column(JSONB, server_default=text("'{}'::jsonb"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    def __repr__(self):
-        return f"<EntityResearch(id='{self.id}')>"
 
 class KnowledgeCollections(Base):
-    """
-    knowledge_collections table model.
-    """
     __tablename__ = "knowledge_collections"
-    
+
     id = Column(String, primary_key=True, nullable=False)
     collection_name = Column(String, nullable=False)
     collection_type = Column(String, nullable=False)
-    description = Column(Text, nullable=True)
-    collection_metadata = Column(String, nullable=True)
-    document_count = Column(String, nullable=True)
-    last_updated = Column(DateTime, nullable=True)
+    description = Column(Text)
+    collection_metadata = Column(JSON)
+    document_count = Column(String)
+    last_updated = Column(DateTime)
     created_at = Column(DateTime, nullable=False)
 
-    def __repr__(self):
-        return f"<KnowledgeCollections(id='{self.id}')>"
+
+class McpServiceDiscoveryCache(Base):
+    __tablename__ = "mcp_service_discovery_cache"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False)
+    client_id = Column(UUID(as_uuid=True))
+    query_hash = Column(Text, nullable=False)
+    cached_response = Column(JSONB, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True))
+
+
+class McpServiceEvents(Base):
+    __tablename__ = "mcp_service_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False)
+    service_id = Column(UUID(as_uuid=True), ForeignKey("mcp_services.id"), nullable=False)
+    event_type = Column(Text, nullable=False)
+    event_data = Column(JSONB)
+    created_by = Column(UUID(as_uuid=True))
+    created_at = Column(DateTime(timezone=True))
+
+
+class McpServiceHealth(Base):
+    __tablename__ = "mcp_service_health"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False)
+    service_id = Column(UUID(as_uuid=True), ForeignKey("mcp_services.id"), nullable=False)
+    check_type = Column(Text, nullable=False)
+    status = Column(Text, nullable=False)
+    response_time_ms = Column(Integer)
+    error_message = Column(Text)
+    metadata_json = Column('metadata', JSONB)
+    created_at = Column(DateTime(timezone=True))
+
+
+class McpServiceTools(Base):
+    __tablename__ = "mcp_service_tools"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False)
+    service_id = Column(UUID(as_uuid=True), ForeignKey("mcp_services.id"), nullable=False)
+    tool_name = Column(Text, nullable=False)
+    tool_description = Column(Text)
+    input_schema = Column(JSONB, nullable=False)
+    output_schema = Column(JSONB)
+    metadata_json = Column('metadata', JSONB)
+    is_enabled = Column(Boolean)
+    created_at = Column(DateTime(timezone=True))
+    updated_at = Column(DateTime(timezone=True))
+
+
+class McpServices(Base):
+    __tablename__ = "mcp_services"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False)
+    service_name = Column(Text, nullable=False)
+    service_type = Column(Text, nullable=False)
+    service_version = Column(Text, nullable=False)
+    base_url = Column(Text, nullable=False)
+    internal_url = Column(Text)
+    protocol = Column(Text)
+    authentication_type = Column(Text)
+    authentication_credentials = Column(Text)
+    client_id = Column(UUID(as_uuid=True))
+    status = Column(Text)
+    metadata_json = Column('metadata', JSONB)
+    created_at = Column(DateTime(timezone=True))
+    updated_at = Column(DateTime(timezone=True))
+    last_seen_at = Column(DateTime(timezone=True))
+
+
+class MemoryEntities(Base):
+    __tablename__ = "memory_entities"
+    # Uses actor_type and actor_id for context (human/synth/synth_class/client)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False)
+    actor_type = Column(Text, nullable=False)
+    actor_id = Column(Text, nullable=False)
+    entity_name = Column(Text, nullable=False)
+    entity_type = Column(Text, nullable=False)
+    metadata_json = Column('metadata', JSONB, server_default=text("'{}'::jsonb"))
+    deleted_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class MemoryObservations(Base):
+    __tablename__ = "memory_observations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False)
+    entity_id = Column(UUID(as_uuid=True), ForeignKey("memory_entities.id"), nullable=False)
+    observation_type = Column(Text, nullable=False)
+    observation_value = Column(JSONB, nullable=False)
+    source = Column(Text)
+    tags = Column(String, server_default=text("'{}'::text[]"))
+    context = Column(JSONB, server_default=text("'{}'::jsonb"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class MemoryRelations(Base):
+    __tablename__ = "memory_relations"
+    # Relationships between memory entities across different actor contexts
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False)
+    from_entity_id = Column(UUID(as_uuid=True), ForeignKey("memory_entities.id"), nullable=False)
+    to_entity_id = Column(UUID(as_uuid=True), ForeignKey("memory_entities.id"), nullable=False)
+    relation_type = Column(Text, nullable=False)
+    metadata_json = Column('metadata', JSONB, server_default=text("'{}'::jsonb"))
+    deleted_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ObjectEmbeddings(Base):
+    __tablename__ = "object_embeddings"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False, server_default=text('gen_random_uuid()'))
+    source_id = Column(UUID(as_uuid=True), ForeignKey("book_ingestions.id"), nullable=False)
+    embedding = Column(String)
+    chunk_index = Column(Integer, nullable=False)
+    chunk_text = Column(Text, nullable=False)
+    start_char = Column(Integer, nullable=False)
+    end_char = Column(Integer, nullable=False)
+    embeddings_metadata = Column(JSONB, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
 
 class ObjectSchemas(Base):
-    """
-    object_schemas table model.
-    """
     __tablename__ = "object_schemas"
-    
+
     id = Column(Integer, primary_key=True, nullable=False)
     name = Column(Text, nullable=False)
     object_type = Column(Text, nullable=False)
-    schema = Column(JSONB, nullable=False)
-    description = Column(Text, nullable=True)
-    created_at = Column(TIMESTAMP(timezone=True), nullable=True, default=datetime.utcnow)
-    updated_at = Column(TIMESTAMP(timezone=True), nullable=True, default=datetime.utcnow)
+    schema_data = Column('schema', JSONB, nullable=False)
+    description = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    def __repr__(self):
-        return f"<ObjectSchemas(id='{self.id}')>"
-
-class ObjectEmbeddings(Base):
-    """
-    object_embeddings table model.
-    Stores embeddings for semantic search across knowledge realms.
-    """
-    __tablename__ = "object_embeddings"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False)
-    
-    # Client realm (nullable for synth_class and skill_module)
-    client_id = Column(UUID(as_uuid=True), nullable=True)
-    
-    # Source tracking
-    source_table = Column(Text, nullable=False)
-    source_id = Column(UUID(as_uuid=True), nullable=False)
-    source_field = Column(Text, nullable=True)
-    
-    # Embedding data
-    embedding_model = Column(Text, nullable=False)
-    embedding_dimension = Column(Integer, nullable=False)
-    embedding = Column(Vector, nullable=True)  # Dynamic dimension based on model
-    
-    # Context/Realm tracking
-    actor_type = Column(Text, nullable=False)
-    actor_id = Column(Text, nullable=False)
-    
-    # Metadata
-    metadata = Column(JSONB, nullable=False, default=dict)
-    
-    # Timestamps
-    created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
-
-    def __repr__(self):
-        return f"<ObjectEmbeddings(id='{self.id}', model='{self.embedding_model}')>"
 
 class SynthClasses(Base):
-    """
-    synth_classes table model.
-    """
     __tablename__ = "synth_classes"
-    
+    # Actor type: synth_class
+
     id = Column(Integer, primary_key=True, nullable=False)
     job_key = Column(Text, nullable=False)
     title = Column(Text, nullable=False)
-    description = Column(Text, nullable=True)
-    default_attributes = Column(JSONB, nullable=True)
+    description = Column(Text)
+    default_attributes = Column(JSONB, server_default=text("'{}'::jsonb"))
 
-    def __repr__(self):
-        return f"<SynthClasses(id='{self.id}')>"
 
 class Synths(Base):
-    """
-    synths table model.
-    """
     __tablename__ = "synths"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False)
-    client_id = Column(UUID(as_uuid=True), nullable=True)
-    synth_classes_id = Column(Integer, nullable=True)
+    # Actor type: synth
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False, server_default=text('gen_random_uuid()'))
+    client_id = Column(UUID(as_uuid=True), ForeignKey("client_roles.role_code"))
+    synth_classes_id = Column(Integer, ForeignKey("synth_classes.id"))
     first_name = Column(Text, nullable=False)
     last_name = Column(Text, nullable=False)
-    preferred_name = Column(Text, nullable=True)
-    avatar_url = Column(Text, nullable=True)
-    backstory = Column(Text, nullable=True)
-    attributes = Column(JSONB, nullable=True)
-    created_at = Column(TIMESTAMP(timezone=True), nullable=True, default=datetime.utcnow)
-    role_code = Column(Text, nullable=True)
+    preferred_name = Column(Text)
+    avatar_url = Column(Text)
+    backstory = Column(Text)
+    attributes = Column(JSONB, server_default=text("'{}'::jsonb"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    role_code = Column(Text, ForeignKey("client_roles.role_code"))
 
-    def __repr__(self):
-        return f"<Synths(id='{self.id}')>"
+
+class SystemLogs(Base):
+    __tablename__ = "system_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False, server_default=text('gen_random_uuid()'))
+    timestamp = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    source = Column(String(255), nullable=False)
+    level = Column(String(20), nullable=False)
+    client_id = Column(UUID(as_uuid=True))
+    user_id = Column(String(255))
+    message = Column(Text, nullable=False)
+    context = Column(JSONB)
+    trace_id = Column(UUID(as_uuid=True))
+    ip_address = Column(String)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ThinkingSessions(Base):
+    __tablename__ = "thinking_sessions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False)
+    client_user_id = Column(UUID(as_uuid=True), nullable=False)
+    session_name = Column(Text)
+    problem_statement = Column(Text)
+    status = Column(Text, nullable=False, server_default=text("'active'::text"))
+    final_answer = Column(Text)
+    metadata_json = Column('metadata', JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    completed_at = Column(DateTime(timezone=True))
+
+
+class Thoughts(Base):
+    __tablename__ = "thoughts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("thinking_sessions.id"), nullable=False)
+    thought_number = Column(Integer, nullable=False)
+    thought_content = Column(Text, nullable=False)
+    is_revision = Column(Boolean, nullable=False)
+    revises_thought_number = Column(Integer)
+    metadata_json = Column('metadata', JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+# Relationships for thinking models
+ThinkingSessions.thoughts = relationship("Thoughts", back_populates="session", cascade="all, delete-orphan")
+Thoughts.session = relationship("ThinkingSessions", back_populates="thoughts")

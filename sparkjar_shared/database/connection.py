@@ -6,8 +6,8 @@ from contextlib import asynccontextmanager
 import logging
 import warnings
 
-from sparkjar_crew.shared.config.config import DATABASE_URL_DIRECT, DATABASE_URL_POOLED, DATABASE_URL
-from sparkjar_crew.shared.database.models import Base
+from sparkjar_shared.config.config import DATABASE_URL_DIRECT, DATABASE_URL_POOLED, DATABASE_URL
+from sparkjar_shared.database.models import Base
 
 logger = logging.getLogger(__name__)
 
@@ -161,15 +161,6 @@ def get_sync_session():
 
 # Default session (backwards compatibility) - use direct connection for admin operations
 get_db_session = get_direct_session
-
-# FastAPI dependency for database sessions
-async def get_db():
-    """
-    FastAPI dependency to get database session.
-    Usage: db: AsyncSession = Depends(get_db)
-    """
-    async with get_pooled_session() as session:
-        yield session
 
 async def cleanup_engines():
     """
