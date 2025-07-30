@@ -11,8 +11,8 @@ from pathlib import Path
 
 # Imports from shared modules are handled by proper Python packaging
 
-from shared.config.config_validator import validate_config_on_startup, ConfigValidationError
-from shared.config.profiles import validate_current_environment
+from sparkjar_shared.config.config_validator import validate_config_on_startup, ConfigValidationError
+from sparkjar_shared.config.profiles import validate_current_environment
 
 
 class StartupValidator:
